@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>EnviroGuard simulator</title>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+  --bg:#eef1ec;--panel:#fbfcfa;--ink:#1c2420;--mute:#5b675f;--line:#cfd7cf;--board:#1f4d3a;--boardink:#d8efe3;
+  --ok:#2fbf62;--ok-off:#b9cdc0;--bad:#e5412d;--bad-off:#d9bfb9;--term:#101713;--termink:#b7f5c9;--accent:#1f6f50}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1512;--panel:#18201c;--ink:#e6efe9;--mute:#93a39a;--line:#2b3731;--board:#14392b;--boardink:#bfe6d1;--ok-off:#2a3d33;--bad-off:#43302c;--term:#080c0a;--accent:#5fd0a0}}
+:root[data-theme="dark"]{--bg:#0f1512;--panel:#18201c;--ink:#e6efe9;--mute:#93a39a;--line:#2b3731;--board:#14392b;--boardink:#bfe6d1;--ok-off:#2a3d33;--bad-off:#43302c;--term:#080c0a;--accent:#5fd0a0}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:inherit}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:980px;margin:0 auto;padding:20px 16px 40px}
+h1{font-size:1.5rem;margin:0 0 4px;letter-spacing:-.01em}
+.sub{color:var(--mute);margin:0 0 18px;max-width:62ch}
+.warn{background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--bad);padding:10px 14px;border-radius:6px;margin-bottom:18px;font-size:.92rem}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:760px){.grid{grid-template-columns:1fr}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px}
+h2{font-size:1rem;margin:0 0 12px}
+label{display:block;font-size:.9rem;margin:10px 0 2px}
+label b{font-variant-numeric:tabular-nums}
+input[type=range]{width:100%;accent-color:var(--accent)}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+button,select,input[type=number]{font:inherit;padding:8px 12px;border-radius:6px;border:1px solid var(--line);background:var(--panel);color:var(--ink);cursor:pointer}
+button:focus-visible,select:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+button.on{background:var(--bad);color:#fff;border-color:var(--bad)}
+.board{background:var(--board);color:var(--boardink);border-radius:10px;padding:16px;display:flex;align-items:center;gap:22px;flex-wrap:wrap}
+.led{display:flex;flex-direction:column;align-items:center;gap:6px;font-size:.8rem}
+.dot{width:38px;height:38px;border-radius:50%;border:2px solid rgba(255,255,255,.35);transition:background .08s}
+#green{background:var(--ok-off)}#green.lit{background:var(--ok);box-shadow:0 0 16px var(--ok)}
+#red{background:var(--bad-off)}#red.lit{background:var(--bad);box-shadow:0 0 16px var(--bad)}
+.state{font-weight:700;font-size:1.3rem;margin-left:auto}
+.ble{margin-top:12px;font-size:.92rem;border-top:1px dashed var(--line);padding-top:10px}
+.ble dl{display:grid;grid-template-columns:auto 1fr;gap:2px 12px;margin:6px 0 0}
+.ble dt{color:var(--mute)}.ble dd{margin:0;font-variant-numeric:tabular-nums}
+#uart{background:var(--term);color:var(--termink);font:13px/1.45 ui-monospace,Consolas,Menlo,monospace;height:300px;overflow:auto;padding:10px;border-radius:8px;white-space:pre-wrap}
+.small{font-size:.85rem;color:var(--mute)}
+.th{display:flex;gap:10px;flex-wrap:wrap}.th input{width:90px}
+.try{margin:8px 0 0;padding-left:18px;font-size:.9rem}
+</style>
+</head>
+<body>
+<main>
+<h1>EnviroGuard simulator</h1>
+<p class="sub">An interactive model of the PRD’s behaviour: thresholds, hysteresis, sensor-fault detection and the mute button. Use it to learn what the real board should do before you flash it.</p>
+<div class="warn"><b>Rehearsal tool only.</b> The hackathon requires firmware running on a physical ESP32. A simulation can’t be submitted as evidence or as your project.</div>
+
+<div class="grid">
+<section class="card" aria-label="Controls">
+<h2>Sensor and controls</h2>
+<label for="t">Temperature <b id="tv">24.0</b> °C</label>
+<input id="t" type="range" min="15" max="45" step="0.1" value="24">
+<label for="h">Humidity <b id="hv">45</b> %</label>
+<input id="h" type="range" min="20" max="95" step="1" value="45">
+<div class="th"><div><label for="TH">Temp threshold (°C)</label><input id="TH" type="number" value="30" step="0.5"></div>
+<div><label for="HH">Humidity threshold (%)</label><input id="HH" type="number" value="70" step="1"></div></div>
+<div class="row">
+<button id="unplug" aria-pressed="false">Unplug sensor</button>
+<button id="mute">Press BOOT button (mute)</button>
+<select id="speed" aria-label="Simulation speed"><option value="2000">Real time (2 s samples)</option><option value="500" selected>4× faster</option></select>
+<button id="reset">Reset board</button>
+</div>
+<ul class="try">
+<li>Raise temperature past 30 °C: red LED, state ALARM (REQ-04).</li>
+<li>Drop it to 29.5 °C: stays in alarm until below 29 °C (hysteresis, REQ-05).</li>
+<li>Unplug the sensor: after 3 failed reads the red LED blinks at 5 Hz (REQ-08).</li>
+<li>Press the button in ALARM: LED off, state still ALARM (REQ-09).</li>
+</ul>
+</section>
+
+<section class="card" aria-label="Board">
+<h2>Board outputs</h2>
+<div class="board">
+<div class="led"><div class="dot" id="green"></div>Green</div>
+<div class="led"><div class="dot" id="red"></div>Red</div>
+<div class="state" id="state" aria-live="polite">NORMAL</div>
+</div>
+<div class="ble"><b>BLE advertising</b>
+<dl><dt>Name</dt><dd>EnviroGuard</dd><dt>Temperature</dt><dd id="bt">–</dd><dt>Humidity</dt><dd id="bh">–</dd><dt>State</dt><dd id="bs">–</dd></dl></div>
+</section>
+</div>
+
+<section class="card" style="margin-top:16px" aria-label="UART">
+<h2>UART output (115200 baud)</h2>
+<div id="uart" role="log"></div>
+<p class="small">Line format matches REQ-03: READ,uptime_ms,temp_c,hum_pct,state</p>
+</section>
+</main>
+<script>
+(function(){
+var $=function(i){return document.getElementById(i)};
+var s={up:0,fail:0,alarm:false,fault:false,muted:false,unplugged:false,timer:null,blink:null,blinkOn:false};
+function log(x){var u=$('uart');u.textContent+=x+'\n';u.scrollTop=u.scrollHeight;if(u.textContent.length>20000)u.textContent=u.textContent.slice(-12000)}
+function leds(){
+  var st=s.fault?'FAULT':(s.alarm?'ALARM':'NORMAL');
+  $('state').textContent=st;
+  $('green').classList.toggle('lit',st==='NORMAL');
+  var redOn=st==='ALARM'?!s.muted:(st==='FAULT'?s.blinkOn:false);
+  $('red').classList.toggle('lit',redOn);
+  return st;
+}
+function sample(){
+  var per=+$('speed').value;s.up+=2000;
+  var TH=+$('TH').value,HH=+$('HH').value;
+  if(s.unplugged){
+    s.fail++;log('WARN,read_failed,'+s.fail);
+    if(s.fail>=3&&!s.fault){s.fault=true;log('FAULT,sensor_read_failed')}
+  }else{
+    if(s.fault){log('RECOVERED,sensor_ok');}
+    s.fail=0;s.fault=false;
+    var t=+$('t').value+(Math.random()-.5)*.2,h=+$('h').value+(Math.random()-.5)*.6;
+    if(!s.alarm&&(t>=TH||h>=HH)){s.alarm=true;log('EVENT,threshold_exceeded')}
+    else if(s.alarm&&t<TH-1&&h<HH-3){s.alarm=false;s.muted=false;log('EVENT,back_to_normal')}
+    var st0=s.alarm?'ALARM':'NORMAL';
+    log('READ,'+s.up+','+t.toFixed(1)+','+h.toFixed(0)+','+st0);
+    $('bt').textContent=t.toFixed(1)+' °C';$('bh').textContent=h.toFixed(0)+' %';
+  }
+  var st=leds();$('bs').textContent=st;
+  if(s.fault&&!s.blink){s.blink=setInterval(function(){s.blinkOn=!s.blinkOn;leds()},100)}
+  if(!s.fault&&s.blink){clearInterval(s.blink);s.blink=null;s.blinkOn=false;leds()}
+}
+function start(){clearInterval(s.timer);s.timer=setInterval(sample,+$('speed').value)}
+function reset(){
+  clearInterval(s.blink);s.blink=null;
+  s.up=0;s.fail=0;s.alarm=false;s.fault=false;s.muted=false;s.blinkOn=false;
+  $('uart').textContent='';log('BOOT_OK,fw=1.0,TEMP_HIGH_C='+$('TH').value+',HUM_HIGH_PCT='+$('HH').value);
+  leds();start();
+}
+$('t').oninput=function(){$('tv').textContent=(+this.value).toFixed(1)};
+$('h').oninput=function(){$('hv').textContent=this.value};
+$('unplug').onclick=function(){s.unplugged=!s.unplugged;this.classList.toggle('on',s.unplugged);this.setAttribute('aria-pressed',s.unplugged);this.textContent=s.unplugged?'Replug sensor':'Unplug sensor';log(s.unplugged?'(you unplugged the sensor)':'(you replugged the sensor)')};
+$('mute').onclick=function(){
+  if(s.alarm&&!s.fault){s.muted=true;log('EVENT,button_mute (state still ALARM)')}else{log('EVENT,button_ignored (not in ALARM)')}
+  leds();
+};
+$('speed').onchange=start;$('reset').onclick=reset;
+reset();
+})();
+</script>
+</body>
+</html>
